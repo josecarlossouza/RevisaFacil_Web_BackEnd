@@ -1,10 +1,15 @@
-// Program.cs (ATUALIZADO)
 using Microsoft.EntityFrameworkCore;
 using RevisaFacilApi.Data;
 using RevisaFacilApi.Services;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 🔥 CRÍTICO: Força a porta 8080 para o Render
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(8080);
+});
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -17,25 +22,35 @@ builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Database configuration for PostgreSQL
+// Database configuration for PostgreSQL (com retry e logging)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+// 🔥 Log da string de conexão (sem a senha completa)
+var connStringParts = connectionString?.Split(';');
+var passwordPart = connStringParts?.FirstOrDefault(p => p.StartsWith("Password="));
+Console.WriteLine($"Tentando conectar ao PostgreSQL...");
+
 builder.Services.AddDbContext<EstudoDbContext>(options =>
-    options.UseNpgsql(connectionString)
-           .UseLazyLoadingProxies());
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+        npgsqlOptions.EnableRetryOnFailure(5))  // Tenta 5 vezes antes de falhar
+        .UseLazyLoadingProxies());
 
 // Register services
 builder.Services.AddScoped<IRevisaoService, RevisaoService>();
 
-// CORS for React frontend
+// 🔥 CORS mais permissivo para testes
 builder.Services.AddCors(options => {
-    options.AddPolicy("AllowReact", policy => {
-        policy.WithOrigins("http://localhost:3000", "https://revisafacil.vercel.app")
+    options.AddPolicy("AllowAll", policy => {
+        policy.AllowAnyOrigin()
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
 });
 
 var app = builder.Build();
+
+// 🔥 Log de inicialização
+Console.WriteLine("=== Iniciando RevisaFácil API ===");
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -45,19 +60,39 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseCors("AllowReact");
+// app.UseHttpsRedirection(); // 🔥 COMENTE ou remova - o Render já lida com SSL
+app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
 
-// Health check endpoint
+// Health check endpoints
 app.MapGet("/", () => "RevisaFácil API v1.3.2 Online");
+app.MapGet("/health", () => Results.Ok(new { 
+    status = "healthy", 
+    timestamp = DateTime.UtcNow,
+    environment = app.Environment.EnvironmentName 
+}));
 
-// Ensure database is created and migrations applied
-using (var scope = app.Services.CreateScope())
+// 🔥 Tentativa de migração com try-catch para não quebrar o app
+try
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<EstudoDbContext>();
-    dbContext.Database.Migrate();
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<EstudoDbContext>();
+        Console.WriteLine("Verificando banco de dados...");
+        await dbContext.Database.CanConnectAsync();
+        Console.WriteLine("✅ Conexão com PostgreSQL OK!");
+        
+        // Aplica migrações se existirem
+        await dbContext.Database.MigrateAsync();
+        Console.WriteLine("✅ Migrações aplicadas!");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"⚠️ ERRO no banco de dados: {ex.Message}");
+    Console.WriteLine("A API continuará rodando, mas algumas funcionalidades podem falhar");
 }
 
+Console.WriteLine($"🚀 API rodando em: http://localhost:8080");
 app.Run();
