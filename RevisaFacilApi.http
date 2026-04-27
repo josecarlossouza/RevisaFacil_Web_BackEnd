@@ -1,0 +1,6 @@
+@RevisaFacilApi_HostAddress = http://localhost:5119
+
+GET {{RevisaFacilApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
