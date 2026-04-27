@@ -29,22 +29,20 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // ============================================================
-// 🔥 CONEXÃO COM POSTGRESQL - String direta do Supabase
+// 🔥 CONEXÃO COM POSTGRESQL
 // ============================================================
 Console.WriteLine("\n📡 CONFIGURANDO CONEXÃO COM BANCO DE DADOS");
 Console.WriteLine("----------------------------------------");
 
-// PEGA A STRING COMPLETA das variáveis de ambiente
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    Console.WriteLine("❌ ERRO CRÍTICO: Connection string não encontrada!");
-    Console.WriteLine("Configure a variável: ConnectionStrings__DefaultConnection");
+    Console.WriteLine("❌ ERRO: Connection string não encontrada!");
     throw new Exception("Connection string não configurada");
 }
 
-// Log seguro (oculta a senha)
+// Log seguro
 var safeString = System.Text.RegularExpressions.Regex.Replace(connectionString, "Password=.*?;", "Password=***;");
 Console.WriteLine($"🔗 Connection String: {safeString}");
 
@@ -56,32 +54,29 @@ try
     Console.WriteLine($"✅ Porta: {npgsqlConnString.Port}");
     Console.WriteLine($"✅ Database: {npgsqlConnString.Database}");
     Console.WriteLine($"✅ Username: {npgsqlConnString.Username}");
-    Console.WriteLine($"✅ SSL Mode: {npgsqlConnString.SslMode}");
-    Console.WriteLine($"✅ Trust Certificate: {npgsqlConnString.TrustServerCertificate}");
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"❌ Erro ao parsear string de conexão: {ex.Message}");
+    Console.WriteLine($"❌ Erro na string: {ex.Message}");
     throw;
 }
 
-// TESTE DE CONEXÃO DIRETA (antes do DbContext)
-Console.WriteLine("\n🔍 TESTE DE CONEXÃO DIRETA (NpgsqlConnection)");
+// TESTE DE CONEXÃO DIRETA
+Console.WriteLine("\n🔍 TESTE DE CONEXÃO DIRETA");
 Console.WriteLine("----------------------------------------");
 
 try
 {
     using (var testConnection = new NpgsqlConnection(connectionString))
     {
-        Console.WriteLine("🔄 Tentando abrir conexão direta...");
+        Console.WriteLine("🔄 Tentando abrir conexão...");
         await testConnection.OpenAsync();
         Console.WriteLine("✅✅✅ CONEXÃO DIRETA BEM-SUCEDIDA! ✅✅✅");
         
-        // Testa uma query simples
         using (var cmd = new NpgsqlCommand("SELECT 1", testConnection))
         {
             var result = await cmd.ExecuteScalarAsync();
-            Console.WriteLine($"✅ Query teste retornou: {result}");
+            Console.WriteLine($"✅ Query teste: {result}");
         }
         
         await testConnection.CloseAsync();
@@ -89,33 +84,23 @@ try
 }
 catch (PostgresException pgEx)
 {
-    Console.WriteLine($"❌ POSTGRES ERROR CÓDIGO: {pgEx.SqlState}");
-    Console.WriteLine($"❌ Mensagem: {pgEx.MessageText}");
-    Console.WriteLine($"❌ Detalhe: {pgEx.Detail}");
-    Console.WriteLine($"❌ Dica: {pgEx.Hint}");
-    Console.WriteLine($"❌ Posição: {pgEx.Position}");
-}
-catch (NpgsqlException npgEx)
-{
-    Console.WriteLine($"❌ NPGSLQ ERROR: {npgEx.Message}");
-    Console.WriteLine($"❌ Código: {npgEx.Code}");
-    Console.WriteLine($"❌ Inner: {npgEx.InnerException?.Message}");
+    Console.WriteLine($"❌ POSTGRES ERROR: {pgEx.SqlState}");
+    Console.WriteLine($"   Mensagem: {pgEx.MessageText}");
+    Console.WriteLine($"   Detail: {pgEx.Detail}");
+    Console.WriteLine($"   Hint: {pgEx.Hint}");
 }
 catch (Exception ex)
 {
     Console.WriteLine($"❌ ERRO NA CONEXÃO DIRETA: {ex.GetType().Name}");
-    Console.WriteLine($"❌ Mensagem: {ex.Message}");
+    Console.WriteLine($"   Mensagem: {ex.Message}");
     if (ex.InnerException != null)
     {
-        Console.WriteLine($"❌ Inner Exception: {ex.InnerException.GetType().Name}");
-        Console.WriteLine($"❌ Inner Message: {ex.InnerException.Message}");
+        Console.WriteLine($"   Inner: {ex.InnerException.Message}");
     }
 }
 
 // Registra DbContext
 Console.WriteLine("\n🔌 REGISTRANDO DbContext");
-Console.WriteLine("----------------------------------------");
-
 builder.Services.AddDbContext<EstudoDbContext>(options =>
 {
     Console.WriteLine("⚙️ Configurando DbContext...");
@@ -123,8 +108,6 @@ builder.Services.AddDbContext<EstudoDbContext>(options =>
     {
         npgsqlOptions.EnableRetryOnFailure(5);
         npgsqlOptions.CommandTimeout(30);
-        Console.WriteLine("   - Retry on failure: 5");
-        Console.WriteLine("   - Command timeout: 30s");
     });
     options.UseLazyLoadingProxies();
     Console.WriteLine("✅ DbContext configurado");
@@ -141,7 +124,7 @@ builder.Services.AddCors(options => {
 });
 Console.WriteLine("✅ CORS configurado");
 
-// Build da aplicação
+// Build
 Console.WriteLine("\n🏗️ Construindo aplicação...");
 var app = builder.Build();
 Console.WriteLine("✅ Aplicação construída");
@@ -161,10 +144,8 @@ app.MapControllers();
 app.MapGet("/", () => "RevisaFácil API v1.3.2 Online");
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
-// ============================================================
-// 🗄️ TESTE DO DbContext (com captura detalhada)
-// ============================================================
-Console.WriteLine("\n🔍 TESTANDO CONEXÃO DO DbContext");
+// Teste do DbContext
+Console.WriteLine("\n🔍 TESTANDO DbContext");
 Console.WriteLine("----------------------------------------");
 
 try
@@ -172,78 +153,34 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<EstudoDbContext>();
-        Console.WriteLine("📡 DbContext obtido com sucesso");
-        Console.WriteLine("🔄 Chamando CanConnectAsync()...");
+        Console.WriteLine("📡 Chamando CanConnectAsync...");
         
-        try
+        var canConnect = await dbContext.Database.CanConnectAsync();
+        
+        if (canConnect)
         {
-            var canConnect = await dbContext.Database.CanConnectAsync();
+            Console.WriteLine("✅✅✅ CONEXÃO DO DbContext BEM-SUCEDIDA! ✅✅✅");
             
-            if (canConnect)
-            {
-                Console.WriteLine("✅✅✅ CONEXÃO DO DbContext BEM-SUCEDIDA! ✅✅✅");
-                
-                // Tenta obter a versão
-                try
-                {
-                    var version = await dbContext.Database.SqlQueryRaw<string>("SELECT version()").FirstOrDefaultAsync();
-                    Console.WriteLine($"📊 PostgreSQL Version: {version}");
-                }
-                catch (Exception versionEx)
-                {
-                    Console.WriteLine($"⚠️ Erro ao obter versão: {versionEx.Message}");
-                }
-                
-                // Aplica migrações
-                Console.WriteLine("🔄 Verificando migrações...");
-                var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-                var pendingList = pendingMigrations.ToList();
-                
-                if (pendingList.Any())
-                {
-                    Console.WriteLine($"📋 Migrações pendentes: {pendingList.Count}");
-                    foreach (var migration in pendingList)
-                    {
-                        Console.WriteLine($"   - {migration}");
-                    }
-                    
-                    Console.WriteLine("🚀 Aplicando migrações...");
-                    await dbContext.Database.MigrateAsync();
-                    Console.WriteLine("✅ Migrações aplicadas!");
-                }
-                else
-                {
-                    Console.WriteLine("✅ Nenhuma migração pendente");
-                }
-            }
-            else
-            {
-                Console.WriteLine("❌❌❌ FALHA NO CanConnectAsync() ❌❌❌");
-                Console.WriteLine("O método retornou 'false' sem lançar exceção");
-            }
+            // Aplica migrações
+            Console.WriteLine("🔄 Aplicando migrações...");
+            await dbContext.Database.MigrateAsync();
+            Console.WriteLine("✅ Migrações aplicadas!");
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"❌❌❌ EXCEÇÃO NO CanConnectAsync() ❌❌❌");
-            Console.WriteLine($"Tipo: {ex.GetType().Name}");
-            Console.WriteLine($"Mensagem: {ex.Message}");
-            if (ex.InnerException != null)
-            {
-                Console.WriteLine($"Inner Tipo: {ex.InnerException.GetType().Name}");
-                Console.WriteLine($"Inner Mensagem: {ex.InnerException.Message}");
-            }
-            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            Console.WriteLine("❌❌❌ FALHA NO CanConnectAsync() ❌❌❌");
         }
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"❌ ERRO NO ESCOPO: {ex.Message}");
+    Console.WriteLine($"❌ ERRO NO DbContext: {ex.Message}");
+    if (ex.InnerException != null)
+        Console.WriteLine($"   Inner: {ex.InnerException.Message}");
 }
 
 Console.WriteLine("\n" + "=".PadRight(60, '='));
 Console.WriteLine($"🚀 API RODANDO - {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-Console.WriteLine($"🏥 Health check: http://localhost:8080/health");
 Console.WriteLine("=".PadRight(60, '='));
 
 await app.RunAsync();
