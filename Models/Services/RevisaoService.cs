@@ -43,6 +43,9 @@ namespace RevisaFacilApi.Services
             {
                 // Determinar quantidade de revisões
                 int qtdRevisoes = assunto.Disciplina?.QuantidadeRevisoes ?? configGlobal.QuantidadeRevisoes;
+
+                qtdRevisoes = qtdRevisoes > 0 ? qtdRevisoes : 5; // Valor padrão seguro
+
                 qtdRevisoes = Math.Min(qtdRevisoes, 30);
 
                 DateTime dataReferencia = assunto.DataInicio;

@@ -312,8 +312,8 @@ namespace RevisaFacilApi.Models
 
         // ── INotifyPropertyChanged ────────────────────────────────────────────────
         public event PropertyChangedEventHandler? PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name ?? string.Empty));
 
         /// <summary>
         /// Notifica TODAS as revisões a partir do índice N (encadeamento em cascata).

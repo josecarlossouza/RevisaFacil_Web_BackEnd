@@ -18,7 +18,8 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
-builder.Services.AddOpenApi();
+// 🔥 REMOVEMOS AddOpenApi() - não existe no .NET 8
+// Mantemos apenas Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -26,9 +27,7 @@ builder.Services.AddSwaggerGen();
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 // 🔥 Log da string de conexão (sem a senha completa)
-var connStringParts = connectionString?.Split(';');
-var passwordPart = connStringParts?.FirstOrDefault(p => p.StartsWith("Password="));
-Console.WriteLine($"Tentando conectar ao PostgreSQL...");
+Console.WriteLine($"Tentando conectar ao PostgreSQL... Host: {connectionString?.Split(';').FirstOrDefault(s => s.Contains("Host"))}");
 
 builder.Services.AddDbContext<EstudoDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
@@ -55,7 +54,6 @@ Console.WriteLine("=== Iniciando RevisaFácil API ===");
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
@@ -80,12 +78,18 @@ try
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<EstudoDbContext>();
         Console.WriteLine("Verificando banco de dados...");
-        await dbContext.Database.CanConnectAsync();
-        Console.WriteLine("✅ Conexão com PostgreSQL OK!");
-        
-        // Aplica migrações se existirem
-        await dbContext.Database.MigrateAsync();
-        Console.WriteLine("✅ Migrações aplicadas!");
+        var canConnect = await dbContext.Database.CanConnectAsync();
+        if (canConnect)
+        {
+            Console.WriteLine("✅ Conexão com PostgreSQL OK!");
+            // Aplica migrações se existirem
+            await dbContext.Database.MigrateAsync();
+            Console.WriteLine("✅ Migrações aplicadas!");
+        }
+        else
+        {
+            Console.WriteLine("⚠️ Não foi possível conectar ao PostgreSQL");
+        }
     }
 }
 catch (Exception ex)
@@ -95,4 +99,4 @@ catch (Exception ex)
 }
 
 Console.WriteLine($"🚀 API rodando em: http://localhost:8080");
-app.Run();
+await app.RunAsync();
