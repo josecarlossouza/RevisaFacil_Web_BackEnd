@@ -23,16 +23,32 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Database configuration for PostgreSQL (com retry e logging)
+// Database configuration for PostgreSQL
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-// 🔥 Log da string de conexão (sem a senha completa)
-Console.WriteLine($"Tentando conectar ao PostgreSQL... Host: {connectionString?.Split(';').FirstOrDefault(s => s.Contains("Host"))}");
+// 🔥 LOG DETALHADO (sem expor a senha completa)
+Console.WriteLine("=== CONFIGURAÇÃO DO BANCO ===");
+Console.WriteLine($"Connection String (com senha oculta): {connectionString?.Replace(connectionString?.Split(';').FirstOrDefault(p => p.Contains("Password")) ?? "", "Password=***")}");
 
-builder.Services.AddDbContext<EstudoDbContext>(options =>
-    options.UseNpgsql(connectionString, npgsqlOptions =>
-        npgsqlOptions.EnableRetryOnFailure(5))  // Tenta 5 vezes antes de falhar
-        .UseLazyLoadingProxies());
+builder.Services.AddDbContext<EstudoDbContext>((serviceProvider, options) =>
+{
+    try
+    {
+        Console.WriteLine("Configurando DbContext...");
+        options.UseNpgsql(connectionString, npgsqlOptions =>
+        {
+            npgsqlOptions.EnableRetryOnFailure(5);
+            npgsqlOptions.CommandTimeout(30);
+        });
+        options.UseLazyLoadingProxies();
+        Console.WriteLine("✅ DbContext configurado com sucesso");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"❌ ERRO na configuração: {ex.Message}");
+        throw;
+    }
+});
 
 // Register services
 builder.Services.AddScoped<IRevisaoService, RevisaoService>();
@@ -71,31 +87,57 @@ app.MapGet("/health", () => Results.Ok(new {
     environment = app.Environment.EnvironmentName 
 }));
 
-// 🔥 Tentativa de migração com try-catch para não quebrar o app
+// 🔥 Tentativa de migração com diagnóstico completo
 try
 {
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<EstudoDbContext>();
         Console.WriteLine("Verificando banco de dados...");
-        var canConnect = await dbContext.Database.CanConnectAsync();
-        if (canConnect)
+        
+        // Testa conexão com timeout
+        var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        
+        try
         {
-            Console.WriteLine("✅ Conexão com PostgreSQL OK!");
-            // Aplica migrações se existirem
-            await dbContext.Database.MigrateAsync();
-            Console.WriteLine("✅ Migrações aplicadas!");
+            var canConnect = await dbContext.Database.CanConnectAsync(cancellationTokenSource.Token);
+            if (canConnect)
+            {
+                Console.WriteLine("✅ Conexão com PostgreSQL OK!");
+                
+                // Tenta aplicar migrações
+                try
+                {
+                    await dbContext.Database.MigrateAsync();
+                    Console.WriteLine("✅ Migrações aplicadas com sucesso!");
+                }
+                catch (Exception migrationEx)
+                {
+                    Console.WriteLine($"⚠️ Erro nas migrações: {migrationEx.Message}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("❌ Falha na conexão com PostgreSQL");
+                Console.WriteLine("Verifique: 1) Host correto 2) Porta 5432 aberta 3) Senha correta 4) SSL Mode");
+            }
         }
-        else
+        catch (OperationCanceledException)
         {
-            Console.WriteLine("⚠️ Não foi possível conectar ao PostgreSQL");
+            Console.WriteLine("❌ Timeout ao conectar (10 segundos) - Supabase pode estar bloqueando");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Erro de conexão detalhado: {ex.GetType().Name}: {ex.Message}");
+            if (ex.InnerException != null)
+                Console.WriteLine($"   Inner: {ex.InnerException.Message}");
         }
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"⚠️ ERRO no banco de dados: {ex.Message}");
-    Console.WriteLine("A API continuará rodando, mas algumas funcionalidades podem falhar");
+    Console.WriteLine($"⚠️ ERRO no escopo do banco: {ex.Message}");
+    Console.WriteLine("A API continuará rodando, mas funcionalidades do banco falharão");
 }
 
 Console.WriteLine($"🚀 API rodando em: http://localhost:8080");
