@@ -52,6 +52,18 @@ Console.WriteLine($"DB_NAME: {(string.IsNullOrEmpty(dbName) ? "❌ NÃO DEFINIDO
 Console.WriteLine($"DB_USER: {(string.IsNullOrEmpty(dbUser) ? "❌ NÃO DEFINIDO" : dbUser)}");
 Console.WriteLine($"DB_PASSWORD: {(string.IsNullOrEmpty(dbPassword) ? "❌ NÃO DEFINIDO" : "✅ DEFINIDO (oculto)")}");
 
+// Teste de DNS
+try
+{
+    Console.WriteLine($"\n🔍 Testando resolução DNS para {dbHost}...");
+    var addresses = System.Net.Dns.GetHostAddresses(dbHost);
+    Console.WriteLine($"✅ DNS resolvido: {string.Join(", ", addresses.Select(a => a.ToString()))}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"❌ Falha na resolução DNS: {ex.Message}");
+}
+
 // Validação
 var missingVars = new List<string>();
 if (string.IsNullOrEmpty(dbHost)) missingVars.Add("DB_HOST");
